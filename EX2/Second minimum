@@ -1,0 +1,129 @@
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <limits.h>
+
+#define MAX_SIZE 100
+
+int main() {
+    int pipe1[2];
+    int pipe2[2];
+    pid_t pid2, pid3;
+    int i;
+
+    if (pipe(pipe1) == -1 || pipe(pipe2) == -1) {
+        perror("Pipe failed");
+        return 1;
+    }
+
+    pid2 = fork();
+
+    if (pid2 < 0) {
+        perror("First fork failed");
+        return 1;
+    }
+
+    if (pid2 == 0) {
+        pid3 = fork();
+
+        if (pid3 < 0) {
+            perror("Second fork failed");
+            exit(1);
+        }
+
+        if (pid3 == 0) {
+            close(pipe1[0]);
+            close(pipe2[0]);
+            close(pipe2[1]);
+
+            int n, arr[MAX_SIZE];
+            printf("[P3] Enter number of elements (max %d): ", MAX_SIZE);
+            if (scanf("%d", &n) != 1) exit(1);
+
+            printf("[P3] Enter %d integers: ", n);
+            for (i = 0; i < n; i++) {
+                if (scanf("%d", &arr[i]) != 1) exit(1);
+            }
+
+            write(pipe1[1], &n, sizeof(int));
+            write(pipe1[1], arr, n * sizeof(int));
+
+            close(pipe1[1]);
+            exit(0);
+        }
+        else {
+            close(pipe1[1]);
+            close(pipe2[0]);
+
+            int n, input_arr[MAX_SIZE];
+            int filtered_arr[MAX_SIZE];
+            int even_count = 0;
+
+            read(pipe1[0], &n, sizeof(int));
+            read(pipe1[0], input_arr, n * sizeof(int));
+            close(pipe1[0]);
+
+            for (i = 0; i < n; i++) {
+                if (input_arr[i] % 2 == 0) {
+                    filtered_arr[even_count] = input_arr[i];
+                    even_count++;
+                }
+            }
+
+            write(pipe2[1], &even_count, sizeof(int));
+            write(pipe2[1], filtered_arr, even_count * sizeof(int));
+
+            close(pipe2[1]);
+            wait(NULL);
+            exit(0);
+        }
+    }
+    else {
+        close(pipe1[0]);
+        close(pipe1[1]);
+        close(pipe2[1]);
+
+        int final_count, final_arr[MAX_SIZE];
+
+        read(pipe2[0], &final_count, sizeof(int));
+        read(pipe2[0], final_arr, final_count * sizeof(int));
+        close(pipe2[0]);
+
+        if (final_count < 2) {
+            printf("[P1] Less than 2 even numbers received. Cannot find second minimum.\n");
+            wait(NULL);
+            return 0;
+        }
+
+        int first_min = INT_MAX;
+        int second_min = INT_MAX;
+
+        for (i = 0; i < final_count; i++) {
+            if (final_arr[i] < first_min) {
+                second_min = first_min;
+                first_min = final_arr[i];
+            } else if (final_arr[i] < second_min && final_arr[i] != first_min) {
+                second_min = final_arr[i];
+            }
+        }
+
+        printf("[P1] Even numbers received: ");
+        for (i = 0; i < final_count; i++) {
+            printf("%d ", final_arr[i]);
+        }
+        printf("\n");
+
+        if (second_min == INT_MAX) {
+            printf("[P1] No distinct second minimum found (numbers might be duplicates).\n");
+        } else {
+            printf("[P1] The Second Minimum Even Number is: %d\n", second_min);
+        }
+
+        wait(NULL);
+    }
+
+    return 0;
+}
