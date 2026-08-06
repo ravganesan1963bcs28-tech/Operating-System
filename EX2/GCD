@@ -1,0 +1,97 @@
+24bcs052@mepcolinux ex2]$cat hier31.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
+int find_gcd(int a, int b) {
+    while (b != 0) {
+        int temp = b;
+        b = a % b;
+        a = temp;
+    }
+    return a;
+}
+
+int main() {
+    int pipe_parent_to_p1[2];
+    int pipe_p1_to_p2[2];
+
+    if (pipe(pipe_parent_to_p1) == -1 || pipe(pipe_p1_to_p2) == -1) {
+        perror("Pipe creation failed");
+        return 1;
+    }
+
+    pid_t p1 = fork();
+
+    if (p1 < 0) {
+        perror("Fork P1 failed");
+        return 1;
+    }
+
+    if (p1 == 0) {
+        int nums_p1[2];
+
+        close(pipe_parent_to_p1[1]);
+        close(pipe_p1_to_p2[0]);
+
+        read(pipe_parent_to_p1[0], nums_p1, sizeof(nums_p1));
+        close(pipe_parent_to_p1[0]);
+
+        printf("[P1] Received numbers: %d and %d\n", nums_p1[0], nums_p1[1]);
+
+        int gcd_p1 = find_gcd(nums_p1[0], nums_p1[1]);
+        printf("[P1] Calculated GCD: %d\n", gcd_p1);
+
+        write(pipe_p1_to_p2[1], nums_p1, sizeof(nums_p1));
+        close(pipe_p1_to_p2[1]);
+
+        exit(0);
+    } else {
+        pid_t p2 = fork();
+
+        if (p2 < 0) {
+            perror("Fork P2 failed");
+            return 1;
+        }
+
+        if (p2 == 0) {
+            int nums_p2[2];
+
+            close(pipe_parent_to_p1[0]);
+            close(pipe_parent_to_p1[1]);
+            close(pipe_p1_to_p2[1]);
+
+            read(pipe_p1_to_p2[0], nums_p2, sizeof(nums_p2));
+            close(pipe_p1_to_p2[0]);
+
+            printf("[P2] Received numbers from P1: %d and %d\n", nums_p2[0], nums_p2[1]);
+
+            int gcd_p2 = find_gcd(nums_p2[0], nums_p2[1]);
+            printf("[P2] Calculated GCD: %d\n", gcd_p2);
+
+            exit(0);
+        } else {
+            int input_nums[2];
+
+            close(pipe_parent_to_p1[0]);
+            close(pipe_p1_to_p2[0]);
+            close(pipe_p1_to_p2[1]);
+
+            printf("[Parent] Enter two numbers: ");
+            if (scanf("%d %d", &input_nums[0], &input_nums[1]) != 2) {
+                return 1;
+            }
+
+            write(pipe_parent_to_p1[1], input_nums, sizeof(input_nums));
+            close(pipe_parent_to_p1[1]);
+
+            wait(NULL);
+            wait(NULL);
+            printf("[Parent] All processes completed.\n");
+        }
+    }
+
+    return 0;
+}
