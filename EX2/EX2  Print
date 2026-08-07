@@ -2,7 +2,7 @@
 Script started on Wednesday 29 July 2026 03:29:04 PM IST
 [24bcs052@mepcolinux ex2]$cat hier1.c
 #include <stdio.h>
-#include <unistd.h>
+#include <unistd.h> 
 #include <string.h>
 #include <sys/wait.h>
 #include <sys/types.h>
