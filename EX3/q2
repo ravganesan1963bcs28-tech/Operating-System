@@ -1,0 +1,112 @@
+[24bcs052@mepcolinux ex3]$cat producer.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <unistd.h>
+
+#define SIZE 10
+#define SHM_KEY 54321 
+
+int main() {
+    int shmid;
+    volatile int *buf;
+    int num;
+
+    shmid = shmget(SHM_KEY, sizeof(int) * (SIZE + 2), IPC_CREAT | 0666);
+    if (shmid == -1) {
+        perror("Error: shmget failed");
+        exit(1);
+    }
+
+    buf = (volatile int *)shmat(shmid, NULL, 0);
+    if (buf == (void *)-1) {
+        perror("Error: shmat failed");
+        exit(1);
+    }
+
+    buf[SIZE]   = 0; 
+    buf[SIZE+1] = 0; 
+
+    printf("Producer started. Enter numbers (-1 to exit):\n");
+
+    while (1) {
+        printf("Enter value: ");
+        if (scanf("%d", &num) != 1) break;
+
+        while ((buf[SIZE] - buf[SIZE+1]) >= SIZE) {
+            printf("Buffer full. Waiting...\n");
+            usleep(100000); 
+        }
+
+        buf[buf[SIZE] % SIZE] = num;
+        printf("Produced: %d\n", num);
+        
+        buf[SIZE]++; 
+
+        if (num == -1) {
+            break;
+        }
+    }
+
+    shmdt((void *)buf);
+    printf("Producer stopped.\n");
+    return 0;
+}
+
+[24bcs052@mepcolinux ex3]$cat consumer.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <unistd.h>
+
+#define SIZE 10
+#define SHM_KEY 54321 
+
+int main() {
+    int shmid;
+    volatile int *buf;
+    int num;
+
+    shmid = shmget(SHM_KEY, sizeof(int) * (SIZE + 2), 0666);
+    if (shmid == -1) {
+        perror("Error: shmget failed. Run producer first");
+        exit(1);
+    }
+
+    buf = (volatile int *)shmat(shmid, NULL, 0);
+    if (buf == (void *)-1) {
+        perror("Error: shmat failed");
+        exit(1);
+    }
+
+    printf("Consumer started. Waiting for data...\n");
+
+    while (1) {
+        while (buf[SIZE] == buf[SIZE+1]) {
+            usleep(50000); 
+        }
+
+        num = buf[buf[SIZE+1] % SIZE];
+        buf[SIZE+1]++; 
+
+        if (num == -1) {
+            printf("Received exit signal (-1). Closing...\n");
+            fflush(stdout); 
+            break;
+        }
+
+        printf("Consumed: %d\n", num);
+        fflush(stdout);
+    }
+
+    shmdt((void *)buf);
+    usleep(50000); 
+    shmctl(shmid, IPC_RMID, NULL); 
+    
+    printf("Consumer stopped.\n");
+    return 0;
+}
