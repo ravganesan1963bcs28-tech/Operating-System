@@ -1,4 +1,4 @@
-[24bcs052@mepcolinux ex3]$cat 3.c
+24bcs052@mepcolinux ex3]$cat 3.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -78,3 +78,42 @@ int main() {
 
     return 0;
 }
+
+[24bcs052@mepcolinux ex3]$cc 3.c
+[24bcs052@mepcolinux ex3]$./a.out
+Enter data: 4
+Enter data: 5
+Enter data: 6
+Enter data: 7
+Enter data: 9
+Enter data: -1
+Enter data: 9
+Enter data: 9
+Enter data: 9
+Enter data: 9
+
+Producer Process:
+Produced 4 at slot 0
+Produced 5 at slot 1
+Produced 6 at slot 2
+Produced 7 at slot 3
+Produced 9 at slot 4
+Produced -1 at slot 5
+Produced 9 at slot 6
+Produced 9 at slot 7
+Produced 9 at slot 8
+Produced 9 at slot 9
+
+Consumer Process:
+Consumed 4 from slot 0
+Consumed 5 from slot 1
+Consumed 6 from slot 2
+Consumed 7 from slot 3
+Consumed 9 from slot 4
+Consumed -1 from slot 5
+Consumed 9 from slot 6
+Consumed 9 from slot 7
+Consumed 9 from slot 8
+Consumed 9 from slot 9
+[24bcs052@mepcolinux ex3]$
+
