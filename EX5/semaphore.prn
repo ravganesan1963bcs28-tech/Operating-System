@@ -1,0 +1,279 @@
+[24bcs052@mepcolinux ex5n]$cat semaphore.h
+#ifndef SEMAPHORE_H
+#define SEMAPHORE_H
+
+#define _DEFAULT_SOURCE
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/sem.h>
+#include <sys/shm.h>
+#include <unistd.h>
+
+#define SIZE 5
+
+#define MUTEX 0
+#define FULL  1
+#define EMPTY 2
+
+union semaphore {
+    int val;
+    struct semid_ds *buf;
+    unsigned short *array;
+};
+
+void wait_sem(int sid, int sno);
+void signal_sem(int sid, int sno);
+
+#endif
+
+[24bcs052@mepcolinux ex5n]$cat producer.c
+#include "semaphore.h"
+
+int main()
+{
+    int sid, shmid;
+    int num;
+    int in = 0;
+    int *buf;
+
+    union semaphore snum;
+    unsigned short values[3];
+
+    key_t shm_key;
+    key_t sem_key;
+
+    /* Generate keys */
+    shm_key = ftok(".", 'A');
+    sem_key = ftok(".", 'B');
+
+    if (shm_key == -1 || sem_key == -1) {
+        perror("ftok failed");
+        exit(EXIT_FAILURE);
+    }
+
+    /* Create shared memory */
+    shmid = shmget(
+        shm_key,
+        sizeof(int) * SIZE,
+        IPC_CREAT | 0666
+    );
+
+    if (shmid == -1) {
+        perror("Producer: shmget failed");
+        exit(EXIT_FAILURE);
+    }
+
+    /* Attach shared memory */
+    buf = (int *)shmat(shmid, NULL, 0);
+
+    if (buf == (void *)-1) {
+        perror("Producer: shmat failed");
+        exit(EXIT_FAILURE);
+    }
+
+    /* Create semaphore set */
+    sid = semget(
+        sem_key,
+        3,
+        IPC_CREAT | 0666
+    );
+
+    if (sid == -1) {
+        perror("Producer: semget failed");
+        shmdt(buf);
+        exit(EXIT_FAILURE);
+    }
+    values[MUTEX] = 1;
+    values[FULL] = 0;
+    values[EMPTY] = SIZE;
+
+    snum.array = values;
+
+    if (semctl(sid, 0, SETALL, snum) == -1) {
+        perror("Producer: semctl SETALL failed");
+        shmdt(buf);
+        exit(EXIT_FAILURE);
+    }
+
+    printf("\n--- Producer Started ---\n");
+    printf("Buffer size: %d\n", SIZE);
+    printf("Enter -1 to terminate.\n");
+
+    while (1) {
+
+        printf("\nEnter data item: ");
+
+        if (scanf("%d", &num) != 1) {
+            printf("Invalid input.\n");
+            break;
+        }
+        wait_sem(sid, EMPTY);
+        wait_sem(sid, MUTEX);
+        buf[in % SIZE] = num;
+
+        printf(
+            "[Producer] Inserted %d at index %d\n",
+            num,
+            in % SIZE
+        );
+
+        in++;
+
+        signal_sem(sid, MUTEX);
+        signal_sem(sid, FULL);
+        if (num == -1) {
+            printf(
+                "[Producer] Termination signal inserted.\n"
+            );
+            break;
+        }
+    }
+
+    /*
+     * Detach shared memory.
+     *
+     * Consumer will remove the IPC objects after receiving -1.
+     */
+    shmdt(buf);
+
+    printf("[Producer] Exiting.\n");
+
+    return 0;
+}
+
+[24bcs052@mepcolinux ex5n]$cat consumer.c
+#include "semaphore.h"
+
+int main()
+{
+    int sid, shmid;
+    int num;
+    int out = 0;
+    int *buf;
+
+    key_t shm_key;
+    key_t sem_key;
+
+    /* Generate the same keys used by producer */
+    shm_key = ftok(".", 'A');
+    sem_key = ftok(".", 'B');
+
+    if (shm_key == -1 || sem_key == -1) {
+        perror("ftok failed");
+        exit(EXIT_FAILURE);
+    }
+    shmid = shmget(
+        shm_key,
+        sizeof(int) * SIZE,
+        0666
+    );
+
+    if (shmid == -1) {
+        perror("Consumer: shmget failed. Start producer first");
+        exit(EXIT_FAILURE);
+    }
+
+    /* Attach shared memory */
+    buf = (int *)shmat(shmid, NULL, 0);
+
+    if (buf == (void *)-1) {
+        perror("Consumer: shmat failed");
+        exit(EXIT_FAILURE);
+    }
+    sid = semget(
+        sem_key,
+        3,
+        0666
+    );
+
+    if (sid == -1) {
+        perror("Consumer: semget failed. Start producer first");
+        shmdt(buf);
+        exit(EXIT_FAILURE);
+    }
+
+    printf("\n--- Consumer Started ---\n");
+
+    while (1) {
+        wait_sem(sid, FULL);
+        wait_sem(sid, MUTEX);
+        num = buf[out % SIZE];
+
+        printf(
+            "[Consumer] Read %d from index %d\n",
+            num,
+            out % SIZE
+        );
+
+        out++;
+
+    
+        signal_sem(sid, MUTEX);
+        signal_sem(sid, EMPTY);
+
+        if (num == -1) {
+            printf(
+                "[Consumer] Termination signal received.\n"
+            );
+            break;
+        }
+    }
+
+  
+    shmdt(buf);
+    if (semctl(sid, 0, IPC_RMID) == -1) {
+        perror("Consumer: semctl IPC_RMID failed");
+    }
+    if (shmctl(shmid, IPC_RMID, NULL) == -1) {
+        perror("Consumer: shmctl IPC_RMID failed");
+    }
+    printf(
+        "[Consumer] Shared memory and semaphores removed.\n"
+    );
+
+    return 0;
+}
+
+[24bcs052@mepcolinux ex5n]$./producer
+
+--- Producer Started ---
+Buffer size: 5
+Enter -1 to terminate.
+
+Enter data item: 3
+[Producer] Inserted 3 at index 0
+
+Enter data item: 4
+[Producer] Inserted 4 at index 1
+
+Enter data item: 5
+[Producer] Inserted 5 at index 2
+
+Enter data item: 6
+[Producer] Inserted 6 at index 3
+
+Enter data item: -1
+[Producer] Inserted -1 at index 4
+[Producer] Termination signal inserted.
+[Producer] Exiting.
+[24bcs052@mepcolinux ex5n]$./consumer
+
+--- Consumer Started ---
+[Consumer] Read 5 from index 0
+[Consumer] Read 6 from index 1
+[Consumer] Read 7 from index 2
+[Consumer] Read 8 from index 3
+[Consumer] Read 9 from index 4
+[Consumer] Read -1 from index 0
+[Consumer] Termination signal received.
+[Consumer] Shared memory and semaphores removed.
+[24bcs052@mepcolinux ex5n]$ls
+
+[24bcs052@mepcolinux ex5n]$exit
+exit
+Script done, file is ex5.prn
+[24bcs052@mepcolinux ex5n]$
+
