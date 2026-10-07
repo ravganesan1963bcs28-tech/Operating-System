@@ -255,10 +255,13 @@ PAGING TECHNIQUE
 5. Display All Details
 6. Exit
 Choose an option: 4
+Enter logical address: 7
 
-Enter logical address: 45
-Invalid logical address! Must be between 0 and 15
-
+Logical Address : 7
+Page Number     : 1
+Offset          : 3
+Frame Number    : 5
+Physical Address: 23
 Do you want to continue? (y/n): y
 
 PAGING TECHNIQUE
