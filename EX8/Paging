@@ -1,4 +1,4 @@
-
+[24bcs052@mepcolinux ex8]$cat paging.c
 #include <stdio.h>
 #include <math.h>
 
@@ -7,9 +7,12 @@ int main()
     int processSize, pageSize, frameSize, numPages, numFrames;
     int totalMemory, internalFrag;
     int pageTable[100];
+    int pageStatus[100];
     int option;
     char choice;
     int i;
+    int isProcessLoaded = 1;
+    int activePages;
 
     printf("Enter total physical memory size (in bytes): ");
     scanf("%d", &totalMemory);
@@ -22,18 +25,14 @@ int main()
 
     frameSize = pageSize;
 
-    // Calculate number of pages (ceiling division)
     numPages = processSize / pageSize;
     if (processSize % pageSize != 0)
         numPages++;
 
-    // Calculate number of frames
     numFrames = totalMemory / frameSize;
 
-    // Calculate internal fragmentation
     internalFrag = (numPages * pageSize) - processSize;
 
-    // Check if process fits in memory
     if (numPages > numFrames)
     {
         printf("\nError: Process requires %d pages but only %d frames available.\n",
@@ -41,7 +40,12 @@ int main()
         return 1;
     }
 
-    // Build page table - assign frames to pages
+    for (i = 0; i < numPages; i++)
+    {
+        pageStatus[i] = 1;
+    }
+    activePages = numPages;
+
     printf("\nEnter frame number for each page:\n");
     for (i = 0; i < numPages; i++)
     {
@@ -63,10 +67,20 @@ int main()
         printf("3. Display Internal Fragmentation\n");
         printf("4. Logical to Physical Address Translation\n");
         printf("5. Display All Details\n");
-        printf("6. Exit\n");
+        printf("6. Delete a Specific Page\n");
+        printf("7. Delete Entire Process\n");
+        printf("8. Exit\n");
 
         printf("Choose an option: ");
         scanf("%d", &option);
+
+        if (option >= 1 && option <= 5 && isProcessLoaded == 0)
+        {
+            printf("\nNo process loaded! Process has been deleted.\n");
+            printf("\nDo you want to continue? (y/n): ");
+            scanf(" %c", &choice);
+            continue;
+        }
 
         switch (option)
         {
@@ -75,7 +89,10 @@ int main()
                 printf("Page No\t\tFrame No\n");
                 for (i = 0; i < numPages; i++)
                 {
-                    printf("%d\t\t%d\n", i, pageTable[i]);
+                    if (pageStatus[i] == 1)
+                        printf("%d\t\t%d\n", i, pageTable[i]);
+                    else
+                        printf("%d\t\t-\n", i);
                 }
                 break;
 
@@ -86,7 +103,7 @@ int main()
 
             case 3:
                 printf("\nTotal memory allocated: %d bytes (%d pages x %d bytes)\n",
-                       numPages * pageSize, numPages, pageSize);
+                       activePages * pageSize, activePages, pageSize);
                 printf("Actual process size: %d bytes\n", processSize);
                 printf("Internal Fragmentation: %d bytes\n", internalFrag);
 
@@ -112,14 +129,17 @@ int main()
                     break;
                 }
 
-                // Calculate page number and offset
                 pageNum = logicalAddr / pageSize;
                 offset = logicalAddr % pageSize;
 
-                // Look up frame number from page table
-                frameNum = pageTable[pageNum];
+                if (pageStatus[pageNum] == 0)
+                {
+                    printf("\nPAGE FAULT! Page %d has been deleted from memory.\n", pageNum);
+                    printf("Cannot translate logical address %d.\n", logicalAddr);
+                    break;
+                }
 
-                // Calculate physical address
+                frameNum = pageTable[pageNum];
                 physicalAddr = (frameNum * frameSize) + offset;
 
                 printf("\nADDRESS TRANSLATION\n");
@@ -144,19 +164,123 @@ int main()
                 printf("\nProcess Details:\n");
                 printf("Process Size          : %d bytes\n", processSize);
                 printf("Pages Required        : %d\n", numPages);
-                printf("Memory Allocated      : %d bytes\n", numPages * pageSize);
+                printf("Memory Allocated      : %d bytes\n", activePages * pageSize);
                 printf("Internal Fragmentation: %d bytes\n", internalFrag);
 
                 printf("\nPage Table:\n");
                 printf("Page No\t\tFrame No\tBase Address\n");
                 for (i = 0; i < numPages; i++)
                 {
-                    printf("%d\t\t%d\t\t%d\n", i, pageTable[i],
-                           pageTable[i] * frameSize);
+                    if (pageStatus[i] == 1)
+                        printf("%d\t\t%d\t\t%d\n", i, pageTable[i],
+                               pageTable[i] * frameSize);
+                    else
+                        printf("%d\t\t-\t\t-\n", i);
                 }
                 break;
 
             case 6:
+            {
+                int pageNum;
+                char confirm;
+
+                if (isProcessLoaded == 0)
+                {
+                    printf("\nNo process loaded! Process has been deleted.\n");
+                    break;
+                }
+
+                if (activePages == 0)
+                {
+                    printf("\nAll pages have already been deleted!\n");
+                    break;
+                }
+
+                printf("\nEnter page number to delete (0 to %d): ", numPages - 1);
+                scanf("%d", &pageNum);
+
+                if (pageNum < 0 || pageNum >= numPages)
+                {
+                    printf("Invalid page number! Must be between 0 and %d\n", numPages - 1);
+                    break;
+                }
+
+                if (pageStatus[pageNum] == 0)
+                {
+                    printf("Page %d is already deleted!\n", pageNum);
+                    break;
+                }
+
+                printf("Are you sure you want to delete Page %d (Frame %d)? (y/n): ",
+                       pageNum, pageTable[pageNum]);
+                scanf(" %c", &confirm);
+
+                if (confirm == 'y' || confirm == 'Y')
+                {
+                    printf("\nFrame %d (Base Address: %d) has been released.\n",
+                           pageTable[pageNum], pageTable[pageNum] * frameSize);
+
+                    pageStatus[pageNum] = 0;
+                    pageTable[pageNum] = -1;
+                    activePages--;
+
+                    printf("Page %d deleted successfully!\n", pageNum);
+                    printf("Pages remaining: %d out of %d\n", activePages, numPages);
+
+                    if (activePages == 0)
+                    {
+                        isProcessLoaded = 0;
+                        processSize = 0;
+                        internalFrag = 0;
+                        printf("\nAll pages have been deleted. Process removed from memory.\n");
+                    }
+                }
+                else
+                {
+                    printf("Delete cancelled.\n");
+                }
+                break;
+            }
+
+            case 7:
+            {
+                char confirm;
+
+                if (isProcessLoaded == 0)
+                {
+                    printf("\nNo process loaded! Process has been already deleted.\n");
+                    break;
+                }
+
+                printf("\nAre you sure you want to delete the entire process? (y/n): ");
+                scanf(" %c", &confirm);
+
+                if (confirm == 'y' || confirm == 'Y')
+                {
+                    for (i = 0; i < numPages; i++)
+                    {
+                        pageTable[i] = -1;
+                        pageStatus[i] = 0;
+                    }
+
+                    processSize = 0;
+                    numPages = 0;
+                    activePages = 0;
+                    internalFrag = 0;
+                    isProcessLoaded = 0;
+
+                    printf("\nENTIRE PROCESS DELETED SUCCESSFULLY!\n");
+                    printf("All pages removed from memory.\n");
+                    printf("All allocated frames have been released.\n");
+                }
+                else
+                {
+                    printf("Delete cancelled. Process still loaded.\n");
+                }
+                break;
+            }
+
+            case 8:
                 printf("Exiting program.\n");
                 break;
 
@@ -164,12 +288,12 @@ int main()
                 printf("\nInvalid option selected!\n");
         }
 
-        if (option >= 1 && option <= 5)
+        if (option >= 1 && option <= 7)
         {
             printf("\nDo you want to continue? (y/n): ");
             scanf(" %c", &choice);
         }
-        else if (option == 6)
+        else if (option == 8)
         {
             choice = 'n';
         }
@@ -182,12 +306,6 @@ int main()
 
     return 0;
 }
-
-
-
-
-
-
 [24bcs052@mepcolinux ex8]$./a.out
 Enter total physical memory size (in bytes): 64
 Enter process size (in bytes): 13
@@ -205,7 +323,9 @@ PAGING TECHNIQUE
 3. Display Internal Fragmentation
 4. Logical to Physical Address Translation
 5. Display All Details
-6. Exit
+6. Delete a Specific Page
+7. Delete Entire Process
+8. Exit
 Choose an option: 1
 
 PAGE TABLE
@@ -223,7 +343,9 @@ PAGING TECHNIQUE
 3. Display Internal Fragmentation
 4. Logical to Physical Address Translation
 5. Display All Details
-6. Exit
+6. Delete a Specific Page
+7. Delete Entire Process
+8. Exit
 Choose an option: 2
 
 Total pages required: 4
@@ -237,7 +359,9 @@ PAGING TECHNIQUE
 3. Display Internal Fragmentation
 4. Logical to Physical Address Translation
 5. Display All Details
-6. Exit
+6. Delete a Specific Page
+7. Delete Entire Process
+8. Exit
 Choose an option: 3
 
 Total memory allocated: 16 bytes (4 pages x 4 bytes)
@@ -253,15 +377,20 @@ PAGING TECHNIQUE
 3. Display Internal Fragmentation
 4. Logical to Physical Address Translation
 5. Display All Details
-6. Exit
+6. Delete a Specific Page
+7. Delete Entire Process
+8. Exit
 Choose an option: 4
+
 Enter logical address: 7
 
-Logical Address : 7
-Page Number     : 1
-Offset          : 3
-Frame Number    : 5
-Physical Address: 23
+ADDRESS TRANSLATION
+Logical Address  : 7
+Page Number      : 1
+Offset           : 3
+Frame Number     : 5 (from page table)
+Physical Address : 5 x 4 + 3 = 23
+
 Do you want to continue? (y/n): y
 
 PAGING TECHNIQUE
@@ -270,7 +399,9 @@ PAGING TECHNIQUE
 3. Display Internal Fragmentation
 4. Logical to Physical Address Translation
 5. Display All Details
-6. Exit
+6. Delete a Specific Page
+7. Delete Entire Process
+8. Exit
 Choose an option: 5
 
 COMPLETE PAGING DETAILS
@@ -302,7 +433,48 @@ PAGING TECHNIQUE
 3. Display Internal Fragmentation
 4. Logical to Physical Address Translation
 5. Display All Details
-6. Exit
+6. Delete a Specific Page
+7. Delete Entire Process
+8. Exit
 Choose an option: 6
+
+Enter page number to delete (0 to 3): 2
+Are you sure you want to delete Page 2 (Frame 0)? (y/n): y
+
+Frame 0 (Base Address: 0) has been released.
+Page 2 deleted successfully!
+Pages remaining: 3 out of 4
+
+Do you want to continue? (y/n): y
+
+PAGING TECHNIQUE
+1. Display Page Table
+2. Display Number of Pages
+3. Display Internal Fragmentation
+4. Logical to Physical Address Translation
+5. Display All Details
+6. Delete a Specific Page
+7. Delete Entire Process
+8. Exit
+Choose an option: 7
+
+Are you sure you want to delete the entire process? (y/n): y
+
+ENTIRE PROCESS DELETED SUCCESSFULLY!
+All pages removed from memory.
+All allocated frames have been released.
+
+Do you want to continue? (y/n): y
+
+PAGING TECHNIQUE
+1. Display Page Table
+2. Display Number of Pages
+3. Display Internal Fragmentation
+4. Logical to Physical Address Translation
+5. Display All Details
+6. Delete a Specific Page
+7. Delete Entire Process
+8. Exit
+Choose an option: 8
 Exiting program.
-[24bcs052@mepcolinux ex8]$
+
